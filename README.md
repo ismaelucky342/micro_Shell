@@ -1,4 +1,7 @@
 # Microshell
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/87650896-8785-41fd-a801-12a75b91faeb" width="300"/>
+</p>
 
 This project is a microshell implementation inspired by the **Minishell** project from **42 Madrid** and developed as part of the **Systems** course at the **University of Technology and Digital Art (U-Tad)**. The goal is to deepen the understanding of key concepts in command interpreters and their efficient execution in Unix-based systems.
 
@@ -116,4 +119,5 @@ This microshell not only demonstrates the foundational knowledge required to bui
 Special thanks to U-Tad and 42 Madrid for making this project and many others like it possible, and for cultivating an environment where students can grow, learn, and create meaningful work.
 
 -Enjoy the code
+![image](https://github.com/user-attachments/assets/224a18c0-6be4-4ece-a70c-bb69b8b260f3)
 
