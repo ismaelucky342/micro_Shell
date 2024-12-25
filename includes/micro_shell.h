@@ -17,6 +17,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <readline/readline.h>
+#include <readline/history.h>
 #include <sys/wait.h>
 
 // Definición de colores para la salida en la terminal

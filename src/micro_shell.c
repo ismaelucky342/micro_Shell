@@ -11,8 +11,6 @@
 /* ************************************************************************** */
 
 #include "micro_shell.h"
-#include <readline/readline.h>
-#include <readline/history.h>
 
 /**
  * Error handler to print messages and exit.
