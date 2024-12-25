@@ -16,6 +16,7 @@ NAME = microshell
 # Compilador y opciones
 CC = gcc
 CFLAGS = -Wall -Wextra -Werror -Iincludes
+LDFLAGS = -lreadline
 
 # Directorios
 SRCDIR = src
@@ -36,8 +37,7 @@ all: $(NAME)
 
 # Compilación del ejecutable
 $(NAME): $(OBJS)
-	@echo -e "$(YELLOW)Compilando $(NAME)...$(NC)"
-	$(CC) $(CFLAGS) -o $(NAME) $(OBJS)
+	$(CC) $(CFLAGS) -o $(NAME) $(OBJS) $(LDFLAGS)
 	@echo  "$(GREEN)Compilación completa!$(NC)"	
 	@echo  "$(GREEN)		███╗   ███╗██╗ ██████╗██████╗  ██████╗ ███████╗██╗  ██╗███████╗██╗     ██╗$(NC)"
 	@echo  "$(GREEN)		████╗ ████║██║██╔════╝██╔══██╗██╔═══██╗██╔════╝██║  ██║██╔════╝██║     ██║$(NC)"

@@ -16,18 +16,18 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h>
 #include <stdio.h>
-#include <fcntl.h>
-#include <glob.h>
+#include <sys/wait.h>
 
-// Nodo del árbol de sintaxis abstracta (AST)
-typedef struct s_ast_node {
-    char **cmd;                    // Comando y sus argumentos
-    char *heredoc;                 // Heredoc si existe
-    struct s_ast_node *left;       // Nodo izquierdo (para pipes)
-    struct s_ast_node *right;      // Nodo derecho (para más comandos)
-} t_ast_node;
+// Definición de colores para la salida en la terminal
+#define COLOR_RESET   "\x1b[0m"
+#define COLOR_RED     "\x1b[31m"
+#define COLOR_GREEN   "\x1b[32m"
+#define COLOR_YELLOW  "\x1b[33m"
+#define COLOR_BLUE    "\x1b[34m"
+#define COLOR_MAGENTA "\x1b[35m"
+#define COLOR_CYAN    "\x1b[36m"
+#define COLOR_WHITE   "\x1b[37m"
 
 // Historial de comandos
 typedef struct s_history {
@@ -35,6 +35,11 @@ typedef struct s_history {
     struct s_history *next;
 } t_history;
 
-t_history *g_history = NULL;
+// Prototipos
+void err(const char *msg);
+void add_to_history(t_history **history, const char *cmd);
+void free_history(t_history *history);
+void execute_command(char **cmd, char **envp);
+void shell_loop(char **envp);
 
 #endif // MICRO_SHELL_H

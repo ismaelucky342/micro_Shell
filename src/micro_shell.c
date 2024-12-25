@@ -10,251 +10,143 @@
 /*                                                                            */
 /* ************************************************************************** */
 
-#include "../includes/micro_shell.h"
+#include "micro_shell.h"
+#include <readline/readline.h>
+#include <readline/history.h>
 
-// Forward declaration of cat_command
-void cat_command(char **cmd);
-
-// Funciones de utilidad
-void err(const char *msg) {
-    while (*msg)
-        write(2, msg++, 1);
+/**
+ * Error handler to print messages and exit.
+ */
+void print_error(const char *msg) {
+    write(2, msg, strlen(msg));
+    exit(EXIT_FAILURE);
 }
 
-void add_to_history(const char *cmd) {
-    t_history *new_entry = malloc(sizeof(t_history));
-    if (!new_entry)
-        return err("error: fatal\n"), exit(1);
-    new_entry->command = strdup(cmd);
-    new_entry->next = g_history;
-    g_history = new_entry;
-}
-
-void print_history() {
-    t_history *current = g_history;
-    while (current) {
-        printf("%s\n", current->command);
-        current = current->next;
+/**
+ * Display a custom prompt.
+ */
+void display_prompt(void) {
+    char cwd[1024];
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        perror("getcwd");
+        strcpy(cwd, "unknown");
     }
+    printf("\x1b[31mmicroshell\x1b[32m@:%s\x1b[37m$ ", cwd);
+    fflush(stdout);
 }
 
-// Liberación del historial
-void free_history() {
-    t_history *current = g_history;
-    while (current) {
-        t_history *next = current->next;
-        free(current->command);
-        free(current);
-        current = next;
+/**
+ * Tokenize the input into arguments for execution.
+ */
+char **tokenize_input(const char *input) {
+    size_t token_count = 0;
+    char **tokens = NULL;
+    char *copy = strdup(input);
+    char *token = strtok(copy, " ");
+
+    while (token) {
+        tokens = realloc(tokens, sizeof(char *) * (token_count + 2));
+        tokens[token_count++] = strdup(token);
+        token = strtok(NULL, " ");
     }
+    tokens[token_count] = NULL;
+    free(copy);
+    return tokens;
 }
 
-// Creación de nodos AST
-t_ast_node *ast_create_node(char **cmd) {
-    t_ast_node *node = malloc(sizeof(t_ast_node));
-    if (!node)
-        return err("error: fatal\n"), exit(1), NULL;
-    node->cmd = cmd;
-    node->heredoc = NULL;
-    node->left = NULL;
-    node->right = NULL;
-    return node;
-}
-
-// Liberación del AST
-void ast_free(t_ast_node *root) {
-    if (!root) return;
-    ast_free(root->left);
-    ast_free(root->right);
-    free(root->heredoc);
-    free(root);
-}
-
-// Manejo de Heredoc
-char *handle_heredoc(const char *delimiter) {
-    char *line = NULL;
-    size_t len = 0;
-    char *result = strdup("");
-
-    printf("heredoc> ");
-    while (getline(&line, &len, stdin) != -1) {
-        if (strcmp(line, delimiter) == 0)
-            break;
-        char *temp = result;
-        result = malloc(strlen(temp) + strlen(line) + 1);
-        sprintf(result, "%s%s", temp, line);
-        free(temp);
-        printf("heredoc> ");
+/**
+ * Free tokenized arguments.
+ */
+void free_tokens(char **tokens) {
+    for (size_t i = 0; tokens && tokens[i]; ++i) {
+        free(tokens[i]);
     }
-    free(line);
-    return result;
+    free(tokens);
 }
 
-// Expansión de Variables
-char *expand_variables(const char *input, char **envp) {
-    char *result = strdup(input);
-    for (char **env = envp; *env; env++) {
-        char *key = strtok(*env, "=");
-        char *value = strtok(NULL, "=");
-        if (strstr(result, key)) {
-            char *temp = result;
-            result = malloc(strlen(temp) + strlen(value) - strlen(key) + 1);
-            sprintf(result, "%s%s", strstr(temp, key) ? value : temp, strstr(temp, key + strlen(key)));
-            free(temp);
-        }
-    }
-    return result;
-}
+/**
+ * Execute a command using execve.
+ */
+void execute_command(char **args, char **envp) {
+    if (!args || !args[0]) return;
 
-// Expansión de Comodines
-char **expand_wildcards(char **cmd) {
-    glob_t results;
-    int flags = 0;
-
-    glob(*cmd, flags, NULL, &results);
-    char **expanded = malloc((results.gl_pathc + 1) * sizeof(char *));
-    for (size_t i = 0; i < results.gl_pathc; i++)
-        expanded[i] = strdup(results.gl_pathv[i]);
-    expanded[results.gl_pathc] = NULL;
-    globfree(&results);
-    return expanded;
-}
-
-// Construcción del AST
-t_ast_node *ast_build(char **argv) {
-    t_ast_node *root = NULL, *current = NULL;
-    while (*argv) {
-        if (!strcmp(*argv, "|")) {
-            t_ast_node *pipe_node = ast_create_node(NULL);
-            if (current)
-                current->right = pipe_node;
-            else
-                root = pipe_node;
-            pipe_node->left = current;
-            current = pipe_node;
-        } else if (!strcmp(*argv, ";")) {
-            if (current)
-                current->right = ast_create_node(NULL);
-            current = NULL;
-        } else if (!strcmp(*argv, "<<")) {
-            argv++;
-            current->heredoc = handle_heredoc(*argv);
+    if (strcmp(args[0], "cd") == 0) {
+        if (args[1] == NULL) {
+            fprintf(stderr, "microshell: expected argument to \"cd\"\n");
         } else {
-            t_ast_node *cmd_node = ast_create_node(argv);
-            if (!current)
-                root = current = cmd_node;
-            else
-                current->right = cmd_node;
-        }
-        argv++;
-    }
-    return root;
-}
-
-// Ejecución del AST
-int execute_ast(t_ast_node *node, char **envp) {
-    if (!node)
-        return 0;
-
-    if (node->cmd) {
-        if (!strcmp(node->cmd[0], "cd")) {
-            if (!node->cmd[1] || node->cmd[2])
-                return err("error: cd: bad arguments\n"), 1;
-            if (chdir(node->cmd[1]) == -1)
-                return err("error: cd: cannot change directory to "), err(node->cmd[1]), err("\n"), 1;
-            return 0;
-        }
-
-        if (!strcmp(node->cmd[0], "history")) {
-            print_history();
-            return 0;
-        }
-
-        if (!strcmp(node->cmd[0], "cat")) {
-            cat_command(node->cmd);
-            return 0;
-        }
-
-        int pid = fork();
-        if (pid == -1)
-            return err("error: fatal\n"), 1;
-        if (pid == 0) {
-            if (node->heredoc) {
-                int fd = open("/tmp/heredoc_tmp", O_WRONLY | O_CREAT | O_TRUNC, 0644);
-                write(fd, node->heredoc, strlen(node->heredoc));
-                close(fd);
-                fd = open("/tmp/heredoc_tmp", O_RDONLY);
-                dup2(fd, 0);
-                close(fd);
+            if (chdir(args[1]) != 0) {
+                perror("microshell");
             }
-            execve(node->cmd[0], node->cmd, envp);
-            err("error: cannot execute "), err(node->cmd[0]), err("\n");
-            exit(1);
         }
-        int status;
-        waitpid(pid, &status, 0);
-        return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
-    }
-
-    int pipe_fd[2];
-    if (node->left && pipe(pipe_fd) == -1)
-        return err("error: fatal\n"), 1;
-
-    if (node->left && fork() == 0) {
-        close(pipe_fd[0]);
-        dup2(pipe_fd[1], 1);
-        close(pipe_fd[1]);
-        exit(execute_ast(node->left, envp));
-    }
-
-    if (node->right && fork() == 0) {
-        close(pipe_fd[1]);
-        dup2(pipe_fd[0], 0);
-        close(pipe_fd[0]);
-        exit(execute_ast(node->right, envp));
-    }
-
-    close(pipe_fd[0]);
-    close(pipe_fd[1]);
-    wait(NULL);
-    wait(NULL);
-    return 0;
-}
-
-// Implementación del comando cat
-void cat_command(char **cmd) {
-    if (!cmd[1]) {
-        err("error: cat: no file provided\n");
         return;
     }
 
-    for (int i = 1; cmd[i]; i++) {
-        FILE *file = fopen(cmd[i], "r");
-        if (!file) {
-            err("error: cat: cannot open file ");
-            err(cmd[i]);
-            err("\n");
-            continue;
+    pid_t pid = fork();
+    if (pid < 0) {
+        perror("fork");
+        return;
+    }
+
+    if (pid == 0) { // Child process
+        char *path = getenv("PATH");
+        char *full_path = NULL;
+        char *dir = strtok(path, ":");
+        while (dir) {
+            full_path = malloc(strlen(dir) + strlen(args[0]) + 2);
+            sprintf(full_path, "%s/%s", dir, args[0]);
+            if (access(full_path, X_OK) == 0) {
+                execve(full_path, args, envp);
+                free(full_path);
+                break;
+            }
+            free(full_path);
+            dir = strtok(NULL, ":");
+        }
+        perror("execve");
+        exit(EXIT_FAILURE);
+    } else { // Parent process
+        int status;
+        waitpid(pid, &status, 0);
+    }
+}
+
+/**
+ * Main shell loop.
+ */
+void shell_loop(char **envp) {
+    char *line = NULL;
+
+    while (1) {
+        display_prompt();
+
+        line = readline("");
+        if (!line) {
+            printf("\nExiting shell.\n");
+            break;
         }
 
-        char buffer[1024];
-        size_t n;
-        while ((n = fread(buffer, 1, sizeof(buffer), file)) > 0) {
-            fwrite(buffer, 1, n, stdout);
+        // Add line to history
+        if (*line) {
+            add_history(line);
         }
 
-        fclose(file);
+        // Parse input and execute
+        char **args = tokenize_input(line);
+        execute_command(args, envp);
+
+        free_tokens(args);
+        free(line);
     }
 }
 
 int main(int argc, char **argv, char **envp) {
-    if (argc < 2)
-        return err("error: no commands provided\n"), 1;
+    (void)argc;
+    (void)argv;
 
-    add_to_history("Starting Shell");
-    t_ast_node *ast = ast_build(argv + 1);
-    int status = execute_ast(ast, envp);
-    ast_free(ast);
-    free_history();
-    return status;
+    printf("Welcome to Apollo's Microshell!\n");
+
+    shell_loop(envp);
+
+    printf("Shell terminated successfully.\n");
+    return 0;
 }
